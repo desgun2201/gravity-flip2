@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Gravity Flip</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Orbitron', monospace;
+  }
+
+  #gameWrapper {
+    position: relative;
+    width: 480px;
+    height: 720px;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #ui {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  #score {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 28px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
+    letter-spacing: 4px;
+  }
+
+  #best {
+    position: absolute;
+    top: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #ffffff88;
+    letter-spacing: 3px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  #screen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: all;
+    cursor: pointer;
+  }
+
+  #screen.hidden { display: none; }
+
+  .screen-title {
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .screen-sub {
+    font-size: 11px;
+    letter-spacing: 4px;
+    margin-bottom: 48px;
+    font-family: 'Share Tech Mono', monospace;
+    text-align: center;
+  }
+
+  .tap-hint {
+    font-size: 13px;
+    letter-spacing: 6px;
+    animation: blink 1.2s ease-in-out infinite;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  #startScreen .screen-title { color: #00ffff; text-shadow: 0 0 30px #00ffff, 0 0 60px #00ffff88; }
+  #startScreen .screen-sub { color: #ffffff66; }
+  #startScreen .tap-hint { color: #00ffff; }
+
+  #deathScreen .screen-title { color: #ff4466; text-shadow: 0 0 30px #ff4466, 0 0 60px #ff446688; }
+  #deathScreen .screen-sub { color: #ffffff66; }
+  #deathScreen .tap-hint { color: #ff4466; }
+
+  #deathScore {
+    font-size: 64px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 20px #ffffff88;
+    margin-bottom: 4px;
+    letter-spacing: 2px;
+  }
+
+  #deathBest {
+    font-size: 12px;
+    color: #ffd700;
+    letter-spacing: 4px;
+    margin-bottom: 40px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  #newBest {
+    font-size: 14px;
+    color: #ffd700;
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    animation: blink 0.6s ease-in-out infinite;
+  }
+
+  #levelBadge {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    font-size: 10px;
+    color: #ffffff44;
+    letter-spacing: 2px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  #combo {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: #ffd700;
+    letter-spacing: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  #combo.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="canvas" width="480" height="720"></canvas>
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="best">BEST: 0</div>
+    <div id="levelBadge">ZONE 1</div>
+    <div id="combo"></div>
+
+    <div id="startScreen" id="screen">
+      <div class="screen-title">GRAVITY<br>FLIP</div>
+      <div class="screen-sub">TAP TO FLIP GRAVITY</div>
+      <div class="tap-hint">— TAP TO START —</div>
+    </div>
+
+    <div id="deathScreen" class="hidden" id="screen">
+      <div class="screen-title">DEAD</div>
+      <div id="newBest" style="display:none">★ NEW BEST ★</div>
+      <div id="deathScore">0</div>
+      <div id="deathBest">BEST: 0</div>
+      <div class="tap-hint">— TAP TO RETRY —</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 480, H = 720;
+
+// UI elements
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
+const startScreen = document.getElementById('startScreen');
+const deathScreen = document.getElementById('deathScreen');
+const deathScoreEl = document.getElementById('deathScore');
+const deathBestEl = document.getElementById('deathBest');
+const newBestEl = document.getElementById('newBest');
+const levelBadgeEl = document.getElementById('levelBadge');
+const comboEl = document.getElementById('combo');
+
+// Game state
+let state = 'start'; // start, playing, dead
+let score = 0;
+let best = parseInt(localStorage.getItem('gf_best') || '0');
+let frame = 0;
+let speed = 3.5;
+let gravDir = 1; // 1 = down, -1 = up
+let flipCooldown = 0;
+let particles = [];
+let obstacles = [];
+let bgStars = [];
+let trails = [];
+let combo = 0;
+let comboTimer = 0;
+let shakeTimer = 0;
+let flashTimer = 0;
+let flashColor = '#ff4466';
+let zone = 1;
+let zoneNames = ['VOID', 'CYBER', 'NEON', 'PLASMA', 'CHAOS'];
+let zoneColors = [
+  { bg1: '#000010', bg2: '#000820', accent: '#00ffff', obstacle: '#00ffff', trail: '#00ffff88' },
+  { bg1: '#0a0010', bg2: '#150025', accent: '#ff00ff', obstacle: '#ff00ff', trail: '#ff00ff88' },
+  { bg1: '#001008', bg2: '#002015', accent: '#00ff88', obstacle: '#00ff88', trail: '#00ff8888' },
+  { bg1: '#100500', bg2: '#200a00', accent: '#ff8800', obstacle: '#ff8800', trail: '#ff880088' },
+  { bg1: '#100010', bg2: '#200020', accent: '#ff4466', obstacle: '#ff4466', trail: '#ff446688' },
+];
+
+// Player
+const player = {
+  x: 90,
+  y: H / 2,
+  w: 24,
+  h: 24,
+  vy: 0,
+  gravity: 0.45,
+  alive: true
+};
+
+// Init stars
+function initStars() {
+  bgStars = [];
+  for (let i = 0; i < 120; i++) {
+    bgStars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.5 + 0.3,
+      speed: Math.random() * 1.5 + 0.5,
+      brightness: Math.random()
+    });
+  }
+}
+
+function resetGame() {
+  score = 0;
+  frame = 0;
+  speed = 3.5;
+  gravDir = 1;
+  flipCooldown = 0;
+  particles = [];
+  obstacles = [];
+  trails = [];
+  combo = 0;
+  comboTimer = 0;
+  shakeTimer = 0;
+  flashTimer = 0;
+  zone = 1;
+  player.x = 90;
+  player.y = H / 2;
+  player.vy = 0;
+  player.alive = true;
+  updateZone();
+  spawnObstacle();
+}
+
+function updateZone() {
+  zone = Math.min(Math.floor(score / 500) + 1, 5);
+  levelBadgeEl.textContent = `ZONE ${zone} · ${zoneNames[zone - 1]}`;
+}
+
+// Obstacles
+function spawnObstacle() {
+  const zc = zoneColors[zone - 1];
+  const type = Math.random();
+  const gap = Math.max(160 - score * 0.04, 100);
+
+  if (type < 0.5) {
+    // Top + bottom spikes with gap
+    const gapY = Math.random() * (H - gap - 160) + 80;
+    obstacles.push({
+      x: W + 60,
+      topH: gapY,
+      botH: H - gapY - gap,
+      w: 36,
+      passed: false,
+      color: zc.obstacle,
+      type: 'wall'
+    });
+  } else if (type < 0.75) {
+    // Moving block
+    obstacles.push({
+      x: W + 60,
+      y: Math.random() * (H - 200) + 100,
+      w: 40,
+      h: 40,
+      vy: (Math.random() - 0.5) * 3,
+      passed: false,
+      color: zc.obstacle,
+      type: 'block'
+    });
+  } else {
+    // Double gap (harder)
+    const gap1 = Math.random() * (H / 2 - 120) + 60;
+    const gap2 = Math.random() * (H / 2 - 120) + H / 2 + 20;
+    obstacles.push({
+      x: W + 60,
+      topH: gap1 - 40,
+      midTop: gap1 + 80,
+      midBot: gap2 - 40,
+      botH: H - gap2,
+      w: 36,
+      passed: false,
+      color: zc.obstacle,
+      type: 'double'
+    });
+  }
+}
+
+function spawnInterval() {
+  return Math.max(80 - Math.floor(score / 100) * 3, 45);
+}
+
+// Particles
+function spawnParticles(x, y, color, count = 12) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+    const spd = Math.random() * 4 + 2;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 1,
+      decay: Math.random() * 0.04 + 0.025,
+      r: Math.random() * 4 + 2,
+      color
+    });
+  }
+}
+
+function spawnFlipParticles() {
+  const zc = zoneColors[zone - 1];
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: player.x,
+      y: player.y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 1,
+      decay: 0.05,
+      r: Math.random() * 5 + 2,
+      color: zc.accent
+    });
+  }
+}
+
+// Input
+function handleInput() {
+  if (state === 'start') {
+    state = 'playing';
+    startScreen.classList.add('hidden');
+    resetGame();
+    return;
+  }
+  if (state === 'dead') {
+    state = 'playing';
+    deathScreen.classList.add('hidden');
+    resetGame();
+    return;
+  }
+  if (state === 'playing' && flipCooldown <= 0) {
+    gravDir *= -1;
+    flipCooldown = 10;
+    spawnFlipParticles();
+    combo++;
+    comboTimer = 120;
+    if (combo > 1) {
+      comboEl.textContent = `${combo}x FLIP COMBO`;
+      comboEl.classList.add('show');
+    }
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+    e.preventDefault();
+    handleInput();
+  }
+});
+document.addEventListener('pointerdown', handleInput);
+
+// Collision
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function checkCollision(obs) {
+  const px = player.x - player.w / 2;
+  const py = player.y - player.h / 2;
+  const pw = player.w - 4;
+  const ph = player.h - 4;
+
+  if (obs.type === 'wall') {
+    if (rectsOverlap(px, py, pw, ph, obs.x, 0, obs.w, obs.topH)) return true;
+    if (rectsOverlap(px, py, pw, ph, obs.x, H - obs.botH, obs.w, obs.botH)) return true;
+  } else if (obs.type === 'block') {
+    if (rectsOverlap(px, py, pw, ph, obs.x, obs.y, obs.w, obs.h)) return true;
+  } else if (obs.type === 'double') {
+    if (rectsOverlap(px, py, pw, ph, obs.x, 0, obs.w, obs.topH)) return true;
+    if (rectsOverlap(px, py, pw, ph, obs.x, obs.midTop, obs.w, obs.midBot - obs.midTop)) return true;
+    if (rectsOverlap(px, py, pw, ph, obs.x, H - obs.botH, obs.w, obs.botH)) return true;
+  }
+  return false;
+}
+
+// Draw helpers
+function drawGlowRect(x, y, w, h, color, glow = 15) {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glow;
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const zc = zoneColors[zone - 1];
+  const x = player.x - player.w / 2;
+  const y = player.y - player.h / 2;
+
+  // Trail
+  trails.push({ x: player.x, y: player.y, life: 1 });
+  if (trails.length > 18) trails.shift();
+
+  ctx.save();
+  trails.forEach((t, i) => {
+    const alpha = (i / trails.length) * 0.4;
+    const size = (i / trails.length) * player.w * 0.7;
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = zc.accent;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = zc.accent;
+    ctx.fillRect(t.x - size / 2, t.y - size / 2, size, size);
+  });
+  ctx.restore();
+
+  // Player body
+  ctx.save();
+  ctx.shadowColor = zc.accent;
+  ctx.shadowBlur = 25;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x, y, player.w, player.h);
+
+  // Inner glow
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = zc.accent + 'aa';
+  ctx.fillRect(x + 4, y + 4, player.w - 8, player.h - 8);
+  ctx.restore();
+
+  // Direction arrow
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath();
+  if (gravDir === 1) {
+    ctx.moveTo(player.x, player.y + 6);
+    ctx.lineTo(player.x - 5, player.y - 4);
+    ctx.lineTo(player.x + 5, player.y - 4);
+  } else {
+    ctx.moveTo(player.x, player.y - 6);
+    ctx.lineTo(player.x - 5, player.y + 4);
+    ctx.lineTo(player.x + 5, player.y + 4);
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawObstacle(obs) {
+  const zc = zoneColors[zone - 1];
+  ctx.save();
+  ctx.shadowColor = obs.color;
+  ctx.shadowBlur = 20;
+  ctx.fillStyle = obs.color;
+
+  if (obs.type === 'wall') {
+    ctx.fillRect(obs.x, 0, obs.w, obs.topH);
+    ctx.fillRect(obs.x, H - obs.botH, obs.w, obs.botH);
+    // Edge highlight
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(obs.x, obs.topH - 2, obs.w, 2);
+    ctx.fillRect(obs.x, H - obs.botH, obs.w, 2);
+  } else if (obs.type === 'block') {
+    ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 0.2;
+    ctx.fillRect(obs.x + 2, obs.y + 2, obs.w - 4, obs.h - 4);
+  } else if (obs.type === 'double') {
+    ctx.fillRect(obs.x, 0, obs.w, obs.topH);
+    ctx.fillRect(obs.x, obs.midTop, obs.w, obs.midBot - obs.midTop);
+    ctx.fillRect(obs.x, H - obs.botH, obs.w, obs.botH);
+  }
+  ctx.restore();
+}
+
+function drawBackground() {
+  const zc = zoneColors[zone - 1];
+
+  // Gradient bg
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, zc.bg1);
+  grad.addColorStop(1, zc.bg2);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Scanlines
+  ctx.save();
+  ctx.globalAlpha = 0.03;
+  ctx.fillStyle = '#fff';
+  for (let y = 0; y < H; y += 4) {
+    ctx.fillRect(0, y, W, 2);
+  }
+  ctx.restore();
+
+  // Stars
+  ctx.save();
+  bgStars.forEach(s => {
+    s.x -= s.speed * (speed / 3.5);
+    if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
+    const alpha = 0.3 + Math.sin(frame * 0.02 + s.brightness * 10) * 0.2;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = zc.accent;
+    ctx.shadowColor = zc.accent;
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // Ground/ceiling lines
+  ctx.save();
+  ctx.shadowColor = zc.accent;
+  ctx.shadowBlur = 15;
+  ctx.strokeStyle = zc.accent;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 2); ctx.lineTo(W, 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, H - 2); ctx.lineTo(W, H - 2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life * 0.9;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawFlash() {
+  if (flashTimer > 0) {
+    ctx.save();
+    ctx.globalAlpha = flashTimer / 20 * 0.4;
+    ctx.fillStyle = flashColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+// Main update
+function update() {
+  if (state !== 'playing') return;
+
+  frame++;
+  score = Math.floor(frame / 6);
+  speed = 3.5 + score * 0.005;
+  updateZone();
+  scoreEl.textContent = score;
+
+  // Player physics
+  player.vy += player.gravity * gravDir;
+  player.vy = Math.max(-12, Math.min(12, player.vy));
+  player.y += player.vy;
+
+  // Flip cooldown
+  if (flipCooldown > 0) flipCooldown--;
+
+  // Combo timer
+  if (comboTimer > 0) {
+    comboTimer--;
+    if (comboTimer === 0) {
+      combo = 0;
+      comboEl.classList.remove('show');
+    }
+  }
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.1;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Flash & shake
+  if (flashTimer > 0) flashTimer--;
+  if (shakeTimer > 0) shakeTimer--;
+
+  // Obstacles
+  if (frame % spawnInterval() === 0) spawnObstacle();
+
+  obstacles.forEach(obs => {
+    obs.x -= speed;
+    if (obs.type === 'block') {
+      obs.y += obs.vy;
+      if (obs.y < 50 || obs.y > H - 90) obs.vy *= -1;
+    }
+
+    // Score point
+    if (!obs.passed && obs.x + obs.w < player.x) {
+      obs.passed = true;
+      const zc = zoneColors[zone - 1];
+      spawnParticles(player.x + 30, player.y, zc.accent, 6);
+    }
+
+    // Collision
+    if (player.alive && checkCollision(obs)) {
+      player.alive = false;
+      spawnParticles(player.x, player.y, '#ff4466', 25);
+      flashTimer = 20;
+      flashColor = '#ff4466';
+      shakeTimer = 20;
+
+      if (score > best) {
+        best = score;
+        localStorage.setItem('gf_best', best);
+      }
+      bestEl.textContent = `BEST: ${best}`;
+
+      setTimeout(() => {
+        state = 'dead';
+        deathScoreEl.textContent = score;
+        deathBestEl.textContent = `BEST: ${best}`;
+        newBestEl.style.display = score >= best && score > 0 ? 'block' : 'none';
+        deathScreen.classList.remove('hidden');
+      }, 600);
+    }
+  });
+
+  obstacles = obstacles.filter(obs => obs.x > -100);
+
+  // Wall collision
+  if (player.y <= player.h / 2 || player.y >= H - player.h / 2) {
+    if (player.alive) {
+      player.alive = false;
+      spawnParticles(player.x, player.y, '#ff4466', 25);
+      flashTimer = 20;
+      shakeTimer = 20;
+
+      if (score > best) {
+        best = score;
+        localStorage.setItem('gf_best', best);
+      }
+      bestEl.textContent = `BEST: ${best}`;
+
+      setTimeout(() => {
+        state = 'dead';
+        deathScoreEl.textContent = score;
+        deathBestEl.textContent = `BEST: ${best}`;
+        newBestEl.style.display = score >= best && score > 0 ? 'block' : 'none';
+        deathScreen.classList.remove('hidden');
+      }, 600);
+    }
+  }
+}
+
+// Draw
+function draw() {
+  ctx.save();
+  if (shakeTimer > 0) {
+    const mag = shakeTimer * 0.4;
+    ctx.translate(
+      (Math.random() - 0.5) * mag,
+      (Math.random() - 0.5) * mag
+    );
+  }
+
+  drawBackground();
+  obstacles.forEach(drawObstacle);
+  drawPlayer();
+  drawParticles();
+  drawFlash();
+
+  ctx.restore();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Init
+initStars();
+bestEl.textContent = `BEST: ${best}`;
+loop();
+</script>
+</body>
+</html>
